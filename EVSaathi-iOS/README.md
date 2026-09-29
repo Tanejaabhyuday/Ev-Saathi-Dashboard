@@ -100,9 +100,9 @@ In Xcode → Select your target → **Signing & Capabilities**:
 
 | Admin | Email | Password | Role |
 |---|---|---|---|
-| Abhyuday Taneja | `admin1@evosaathi.com` | `Admin@1234` | Super Admin |
-| Priya Mehta | `admin2@evosaathi.com` | `Admin@1234` | Fleet Manager |
-| Ravi Shankar | `admin3@evosaathi.com` | `Admin@1234` | Fleet Manager |
+| Abhyuday Taneja | `admin1@evosaathi.com` | `YOUR_PASSWORD` | Super Admin |
+| Priya Mehta | `admin2@evosaathi.com` | `YOUR_PASSWORD` | Fleet Manager |
+| Ravi Shankar | `admin3@evosaathi.com` | `YOUR_PASSWORD` | Fleet Manager |
 
 ---
 
