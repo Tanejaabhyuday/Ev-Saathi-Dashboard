@@ -381,17 +381,10 @@ Contributions are welcome! Please follow these steps:
 4. Push to the branch (`git push origin feature/dynamic-route-optimization`).
 5. Open a Pull Request.
 
----
 
-## 📄 License
-
-This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
-
----
 
 <div align="center">
-
-**Built with passion for green urban mobility and intelligent electric transit.**  
+ 
 *Developed by [Abhyuday Taneja](https://github.com/Tanejaabhyuday)*
 
 </div>
