@@ -98,6 +98,9 @@ struct DashboardView: View {
                 }
                 .padding(.vertical)
             }
+            .refreshable {
+                await fleetVM.refreshData()
+            }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Operations Overview")
             .navigationBarTitleDisplayMode(.large)

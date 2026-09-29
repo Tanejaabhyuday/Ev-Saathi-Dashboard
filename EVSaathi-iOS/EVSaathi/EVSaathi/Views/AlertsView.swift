@@ -73,6 +73,9 @@ struct AlertsView: View {
                         }
                     }
                     .listStyle(.plain)
+                    .refreshable {
+                        await fleetVM.refreshData()
+                    }
                 }
             }
             .background(Color(.systemGroupedBackground))

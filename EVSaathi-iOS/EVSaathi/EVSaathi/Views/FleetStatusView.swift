@@ -63,6 +63,9 @@ struct FleetStatusView: View {
                         .buttonStyle(.plain)
                     }
                     .listStyle(.plain)
+                    .refreshable {
+                        await fleetVM.refreshData()
+                    }
                 }
             }
             .navigationTitle("Fleet Status")

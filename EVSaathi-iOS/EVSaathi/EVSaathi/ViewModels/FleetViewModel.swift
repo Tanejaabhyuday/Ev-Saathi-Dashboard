@@ -74,6 +74,18 @@ final class FleetViewModel: ObservableObject {
         alertListener?.remove()
     }
 
+    // MARK: - Manual Refresh (Pull-to-refresh)
+    func refreshData() async {
+        // Stop current listeners
+        stopListening()
+        // Restart listeners to fetch fresh snapshot from Firestore
+        startListening()
+        
+        // Wait a short duration to allow the UI to show the refresh spinner
+        // and for the first snapshots to return from the cloud
+        try? await Task.sleep(nanoseconds: 800_000_000)
+    }
+
     // MARK: - Static Charger Coordinates
     let chargerLocations: [String: (lat: Double, lng: Double)] = [
         "CH-1": (28.5494, 77.2522),

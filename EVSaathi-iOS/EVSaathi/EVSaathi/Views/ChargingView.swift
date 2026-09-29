@@ -46,6 +46,9 @@ struct ChargingView: View {
                 }
                 .padding(.top, 12)
             }
+            .refreshable {
+                await fleetVM.refreshData()
+            }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Charging Infrastructure")
             .navigationBarTitleDisplayMode(.large)
