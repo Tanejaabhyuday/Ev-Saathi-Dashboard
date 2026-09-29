@@ -36,6 +36,13 @@ The platform is architected around a synchronized dual-client model:
 2. **Native iOS App**: A native mobile command center built with **SwiftUI**, **MapKit**, **Combine**, and **Firebase SDK**, designed for fleet managers in the field.
 3. **Synchronized Real-Time Cloud Engine**: Powered by **Google Cloud Firestore** and **Firebase Authentication**, delivering bi-directional sub-second telemetry streaming, offline cache resilience, and role-based access control.
 
+<br/>
+
+<div align="center">
+  <img src="assets/web-dashboard.png" alt="EV Saathi Web Operations Command Portal" width="100%" style="border-radius: 12px; margin-bottom: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1);" />
+  <br/>
+  <img src="assets/ios-dashboard.png" alt="EV Saathi Native iOS Dashboard" width="350" style="border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1);" />
+</div>
 ---
 
 ## 🏗️ System Architecture
