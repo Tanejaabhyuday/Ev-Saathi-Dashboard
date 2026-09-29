@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EV Saathi - Fleet Manager</title>
+    <!-- Leaflet (Free Open-Source Maps) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Firebase SDK (compat build — works directly in browser) -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+    <style>
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 text-slate-900">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // ─────────────────────────────────────────────────────────────────────
+        // FIREBASE CONFIG
+        // Get these values from:
+        //   Firebase Console → Project Settings → Your apps → (add Web app) → Config
+        // ─────────────────────────────────────────────────────────────────────
+        const FIREBASE_CONFIG = {
+            apiKey: "AIzaSyCimEBQkVSyeDZlRt5M8z1nS1R_tUq6iX0",
+            authDomain: "ev-saathi-fleet.firebaseapp.com",
+            projectId: "ev-saathi-fleet",
+            storageBucket: "ev-saathi-fleet.firebasestorage.app",
+            messagingSenderId: "851289969942",
+            appId: "1:851289969942:web:2564d9d5f2cd408160ec37"
+        };
+
+        if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        // Enable offline caching (mirrors iOS Firestore offline persistence)
+        db.enablePersistence({ synchronizeTabs: true }).catch(() => { });
+
+        // ─────────────────────────────────────────────────────────────────────
+        // ICONS
+        // ─────────────────────────────────────────────────────────────────────
+        const IconBase = ({ children, ...props }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" strokeWidth="2"
+                strokeLinecap="round" strokeLinejoin="round" {...props}>
+                {children}
+            </svg>
+        );
+        const LayoutDashboard = p => <IconBase {...p}><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></IconBase>;
+        const MapIcon = p => <IconBase {...p}><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" /><line x1="9" x2="9" y1="3" y2="18" /><line x1="15" x2="15" y1="6" y2="21" /></IconBase>;
+        const Zap = p => <IconBase {...p}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></IconBase>;
+        const Activity = p => <IconBase {...p}><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></IconBase>;
+        const AlertTriangle = p => <IconBase {...p}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" /><line x1="12" x2="12" y1="9" y2="13" /><line x1="12" x2="12.01" y1="17" y2="17" /></IconBase>;
+        const Bus = p => <IconBase {...p}><path d="M8 6v6" /><path d="M15 6v6" /><path d="M2 12h19.6" /><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3" /><circle cx="7" cy="18" r="2" /><path d="M9 18h5" /><circle cx="16" cy="18" r="2" /></IconBase>;
+        const Battery = p => <IconBase {...p}><rect width="16" height="10" x="2" y="7" rx="2" ry="2" /><line x1="22" x2="22" y1="11" y2="13" /></IconBase>;
+        const BatteryCharging = p => <IconBase {...p}><path d="M15 7h1a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-2" /><path d="M6 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h1" /><path d="m11 7-3 5h4l-3 5" /><line x1="22" x2="22" y1="11" y2="13" /></IconBase>;
+        const Thermometer = p => <IconBase {...p}><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z" /></IconBase>;
+        const Menu = p => <IconBase {...p}><line x1="4" x2="20" y1="12" y2="12" /><line x1="4" x2="20" y1="6" y2="6" /><line x1="4" x2="20" y1="18" y2="18" /></IconBase>;
+        const X = p => <IconBase {...p}><path d="M18 6 6 18" /><path d="m6 6 12 12" /></IconBase>;
+        const Search = p => <IconBase {...p}><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></IconBase>;
+        const Gauge = p => <IconBase {...p}><path d="m12 14 4-4" /><path d="M3.34 19a10 10 0 1 1 17.32 0" /></IconBase>;
+        const User = p => <IconBase {...p}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></IconBase>;
+        const LogOut = p => <IconBase {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" x2="9" y1="12" y2="12" /></IconBase>;
+        const CheckCircle = p => <IconBase {...p}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><path d="m9 11 3 3L22 4" /></IconBase>;
+        const History = p => <IconBase {...p}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l4 2" /></IconBase>;
+
+        // ─────────────────────────────────────────────────────────────────────
+        // CONFIG & CONSTANTS
+        // ─────────────────────────────────────────────────────────────────────
+        const GOOGLE_MAPS_API_KEY = 'AIzaSyDfR6BDN3AH2809B36ceWH9JITx7Vy02Dg';
+        const REFRESH_RATE = 2000;
+        const BUS_COUNT = 8;
+        const CHARGER_LOCATIONS = { "CH-1": { lat: 28.5494, lng: 77.2522 }, "CH-2": { lat: 28.4900, lng: 77.0886 }, "CH-3": { lat: 28.5708, lng: 77.3216 }, "CH-4": { lat: 28.5524, lng: 77.0583 } };
+        const DELHI_CENTER = { lat: 28.6139, lng: 77.2090 };
+
+        const ROUTES = [
+            {
+                id: 'R1', name: 'Connaught Place Circle', color: '#3B82F6',
+                points: [{ lat: 28.6315, lng: 77.2167 }, { lat: 28.6327, lng: 77.2197 },
+                { lat: 28.6295, lng: 77.2215 }, { lat: 28.6280, lng: 77.2180 },
+                { lat: 28.6315, lng: 77.2167 }]
+            },
+            {
+                id: 'R2', name: 'IGI Airport Express', color: '#10B981',
+                points: [{ lat: 28.6139, lng: 77.2090 }, { lat: 28.5900, lng: 77.1600 },
+                { lat: 28.5562, lng: 77.1000 }]
+            },
+            {
+                id: 'R3', name: 'Noida-Gurgaon Link', color: '#F59E0B',
+                points: [{ lat: 28.5355, lng: 77.3910 }, { lat: 28.5300, lng: 77.2700 },
+                { lat: 28.4595, lng: 77.0266 }]
+            },
+        ];
+
+        const DRIVER_NAMES = [
+            "Rajesh Kumar", "Vikram Singh", "Amit Verma", "Suresh Yadav",
+            "Dinesh Karthik", "Manoj Tiwari", "Rakesh Sharma", "Sunil Patel"
+        ];
+
+        const INIT_CHARGERS = [
+            { id: 'CH-1', name: 'Nehru Place Hub', location: 'South Delhi', isOccupied: true, currentVehicle: 'DL-1PC-2002', power: 150 },
+            { id: 'CH-2', name: 'Cyber City Depot', location: 'Gurugram', isOccupied: true, currentVehicle: 'DL-1PC-2004', power: 150 },
+            { id: 'CH-3', name: 'Noida Sec 18', location: 'Noida', isOccupied: false, currentVehicle: null, power: 150 },
+            { id: 'CH-4', name: 'Dwarka Sec 21', location: 'West Delhi', isOccupied: false, currentVehicle: null, power: 150 },
+        ];
+
+        const generateId = () => Math.random().toString(36).substr(2, 9);
+        const BUS_SVG_PATH = "M17 6h-2v-2c0-1.104-.896-2-2-2h-6c-1.104 0-2 .896-2 2v2h-2c-1.657 0-3 1.343-3 3v9c0 1.3 1.075 2.358 2.375 2.485l-1.375 1.515h14l-1.375-1.515c1.3-.127 2.375-1.185 2.375-2.485v-9c0-1.657-1.343-3-3-3zm-12 2h10v3h-10v-3zm2.5 9c-.828 0-1.5-.672-1.5-1.5s.672-1.5 1.5-1.5 1.5.672 1.5 1.5-.672 1.5-1.5 1.5zm7 0c-.828 0-1.5-.672-1.5-1.5s.672-1.5 1.5-1.5 1.5.672 1.5 1.5-.672 1.5-1.5 1.5zm1.5-4h-10v-2h10v2z";
+
+        // ─────────────────────────────────────────────────────────────────────
+        // LOGIN VIEW
+        // ─────────────────────────────────────────────────────────────────────
+        const LoginView = ({ email, setEmail, password, setPassword, onLogin, isLoading, error }) => (
+            <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+                <div className="w-full max-w-md fade-in">
+                    <div className="text-center mb-8">
+                        <div className="w-16 h-16 bg-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-orange-900/40">
+                            <Bus size={36} className="text-white" />
+                        </div>
+                        <h1 className="text-3xl font-bold text-white">EV Saathi</h1>
+                        <p className="text-slate-400 mt-1">Fleet Manager Portal</p>
+                    </div>
+
+                    <div className="bg-slate-800/80 backdrop-blur rounded-2xl p-8 shadow-2xl border border-slate-700">
+                        <h2 className="text-white font-semibold text-lg mb-6">Administrator Login</h2>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-slate-400 text-xs font-medium mb-1 block uppercase tracking-wider">Email</label>
+                                <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                                    placeholder="admin@evosaathi.com" autoComplete="email"
+                                    className="w-full px-4 py-3 bg-slate-700 text-white rounded-xl outline-none focus:ring-2 focus:ring-orange-500 placeholder-slate-500" />
+                            </div>
+                            <div>
+                                <label className="text-slate-400 text-xs font-medium mb-1 block uppercase tracking-wider">Password</label>
+                                <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+                                    placeholder="••••••••" autoComplete="current-password"
+                                    onKeyDown={e => e.key === 'Enter' && onLogin()}
+                                    className="w-full px-4 py-3 bg-slate-700 text-white rounded-xl outline-none focus:ring-2 focus:ring-orange-500 placeholder-slate-500" />
+                            </div>
+                            {error && (
+                                <div className="flex items-center gap-2 text-red-400 text-sm bg-red-900/20 px-4 py-2 rounded-lg border border-red-800/50">
+                                    <AlertTriangle size={16} className="shrink-0" />
+                                    {error}
+                                </div>
+                            )}
+                            <button onClick={onLogin} disabled={isLoading || !email || !password}
+                                className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                {isLoading ? 'Signing in…' : 'Sign In →'}
+                            </button>
+                        </div>
+
+                        <div className="mt-6 pt-5 border-t border-slate-700">
+                            <p className="text-slate-500 text-xs font-medium mb-3 uppercase tracking-wider">Demo Accounts  ·  Password: Admin@1234</p>
+                            <div className="space-y-2">
+                                {[
+                                    { email: 'admin1@evosaathi.com', role: 'Super Admin' },
+                                    { email: 'admin2@evosaathi.com', role: 'Fleet Manager' },
+                                    { email: 'admin3@evosaathi.com', role: 'Fleet Manager' },
+                                ].map(a => (
+                                    <button key={a.email} onClick={() => { setEmail(a.email); setPassword('Admin@1234'); }}
+                                        className="w-full flex justify-between items-center text-xs px-3 py-2 rounded-lg hover:bg-slate-700 transition-colors cursor-pointer">
+                                        <span className="text-slate-400">{a.email}</span>
+                                        <span className="text-orange-400 font-medium">{a.role}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+
+        // ─────────────────────────────────────────────────────────────────────
+        // SIDEBAR  (updated: dynamic user name + logout button)
+        // ─────────────────────────────────────────────────────────────────────
+        const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen, onLogout, userName }) => {
+            const menuItems = [
+                { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+                { id: 'map', label: 'Live Tracking', icon: MapIcon },
+                { id: 'fleet', label: 'Fleet Status', icon: Bus },
+                { id: 'charging', label: 'Charging Mgmt', icon: Zap },
+                { id: 'alerts', label: 'Alerts', icon: AlertTriangle },
+            ];
+            const initials = (userName || 'AD').split('@')[0].substring(0, 2).toUpperCase();
+
+            return (
+                <>
+                    {isOpen && <div className="fixed inset-0 bg-black bg-opacity-50 z-20 md:hidden" onClick={() => setIsOpen(false)} />}
+                    <div className={`fixed inset-y-0 left-0 z-30 w-64 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 flex flex-col`}>
+                        <div className="flex items-center justify-between p-6 border-b border-slate-700">
+                            <div className="flex items-center gap-2 font-bold text-xl">
+                                <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
+                                    <Bus size={20} className="text-white" />
+                                </div>
+                                <span>EV Saathi</span>
+                            </div>
+                            <button onClick={() => setIsOpen(false)} className="md:hidden"><X size={24} /></button>
+                        </div>
+                        <nav className="p-4 space-y-2 flex-1">
+                            {menuItems.map(item => (
+                                <button key={item.id} onClick={() => { setActiveTab(item.id); setIsOpen(false); }}
+                                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${activeTab === item.id ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/50' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+                                    <item.icon size={20} />
+                                    <span className="font-medium">{item.label}</span>
+                                </button>
+                            ))}
+                        </nav>
+                        <div className="p-4 border-t border-slate-800">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-orange-600 flex items-center justify-center shrink-0">
+                                    <span className="font-bold text-sm">{initials}</span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium truncate">{(userName || 'admin').split('@')[0]}</p>
+                                    <p className="text-xs text-slate-500">Fleet Manager</p>
+                                </div>
+                                <button onClick={onLogout} title="Sign Out"
+                                    className="p-1.5 text-slate-500 hover:text-red-400 rounded-lg transition-colors">
+                                    <LogOut size={18} />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </>
+            );
+        };
+
+        // ─────────────────────────────────────────────────────────────────────
+        // METRIC CARD
+        // ─────────────────────────────────────────────────────────────────────
+        const MetricCard = ({ title, value, subtext, icon: Icon, color }) => (
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-start justify-between">
+                <div>
+                    <p className="text-slate-500 text-sm font-medium mb-1">{title}</p>
+                    <h3 className="text-3xl font-bold text-slate-900">{value}</h3>
+                    {subtext && <p className={`text-sm mt-2 ${subtext.includes('+') ? 'text-green-600' : 'text-slate-400'}`}>{subtext}</p>}
+                </div>
+                <div className={`p-3 rounded-xl ${color}`}>
+                    <Icon size={24} className="text-white" />
+                </div>
+            </div>
+        );
+
+        // ─────────────────────────────────────────────────────────────────────
+        // GOOGLE MAP COMPONENT (unchanged)
+        // ─────────────────────────────────────────────────────────────────────
+        const GoogleMapComponent = ({ buses, routes, height = "600px", onRouteCalculated }) => {
+            const mapRef = useRef(null);
+            const mapInstanceRef = useRef(null);
+            const markersRef = useRef({});
+            const polylinesRef = useRef({});
+
+            useEffect(() => {
+                if (mapInstanceRef.current || !mapRef.current) return;
+                
+                // Wait for L to be available
+                if (!window.L) {
+                    console.error("Leaflet not loaded");
+                    return;
+                }
+
+                const initialCenter = buses.length === 1 ? buses[0].location : DELHI_CENTER;
+                const initialZoom = buses.length === 1 ? 14 : 11;
+                
+                const map = L.map(mapRef.current).setView([initialCenter.lat, initialCenter.lng], initialZoom);
+                
+                L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+                    attribution: '© OpenStreetMap contributors',
+                    maxZoom: 19
+                }).addTo(map);
+                
+                mapInstanceRef.current = map;
+            }, []);
+
+            // Route Calculation (using OSRM instead of Google Directions)
+            useEffect(() => {
+                if (!mapInstanceRef.current) return;
+                
+                routes.forEach(async route => {
+                    if (polylinesRef.current[route.id]) return;
+                    
+                    try {
+                        // OSRM expects Lng,Lat
+                        const coordinates = route.points.map(p => `${p.lng},${p.lat}`).join(';');
+                        const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson`);
+                        const data = await res.json();
+                        
+                        if (data.code === 'Ok' && data.routes && data.routes[0]) {
+                            // OSRM returns GeoJSON coordinates as [lng, lat]
+                            const detailedPath = data.routes[0].geometry.coordinates.map(c => ({ lat: c[1], lng: c[0] }));
+                            if (onRouteCalculated) onRouteCalculated(route.id, detailedPath);
+                            
+                            // Draw polyline
+                            polylinesRef.current[route.id] = L.polyline(detailedPath, {
+                                color: route.color,
+                                weight: 5,
+                                opacity: 0.8
+                            }).addTo(mapInstanceRef.current);
+                        } else {
+                            throw new Error("OSRM failed");
+                        }
+                    } catch (err) {
+                        console.log("Using fallback straight lines", err);
+                        polylinesRef.current[route.id] = L.polyline(route.points, {
+                            color: route.color,
+                            weight: 4,
+                            opacity: 0.8,
+                            dashArray: '10, 10'
+                        }).addTo(mapInstanceRef.current);
+                    }
+                });
+            }, [routes]);
+
+            // Bus Markers Update
+            useEffect(() => {
+                if (!mapInstanceRef.current || !window.L) return;
+                
+                buses.forEach(bus => {
+                    const color = bus.status === 'Alert' ? '#EF4444' : bus.status === 'Charging' ? '#10B981' : '#3B82F6';
+                    
+                    // HTML Icon
+                    const svgIcon = L.divIcon({
+                        className: 'custom-bus-marker',
+                        html: `<div style="background-color: ${color}; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3); color: white;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>
+                        </div>`,
+                        iconSize: [28, 28],
+                        iconAnchor: [14, 14],
+                        popupAnchor: [0, -14]
+                    });
+
+                    function getPopupHtml(data) {
+                        return `<div style="font-family:sans-serif;min-width:140px;">
+                                <div style="font-weight:bold;font-size:14px;margin-bottom:6px;color:#1e293b;border-bottom:1px solid #eee;padding-bottom:4px;">${data.id}</div>
+                                <div style="font-size:12px;color:#64748b;line-height:1.5;">
+                                    <div style="display:flex;justify-content:space-between;"><span>Speed:</span><span style="color:#0f172a;font-weight:600;">${Math.round(data.speed)} km/h</span></div>
+                                    <div style="display:flex;justify-content:space-between;"><span>Battery:</span><span style="color:${data.soc < 20 ? '#ef4444' : '#10b981'};font-weight:600;">${Math.round(data.soc)}%</span></div>
+                                    <div style="display:flex;justify-content:space-between;"><span>Status:</span><span style="color:${data.status === 'Moving' ? '#3b82f6' : '#64748b'};font-weight:600;">${data.status}</span></div>
+                                </div>
+                            </div>`;
+                    }
+
+                    if (markersRef.current[bus.id]) {
+                        markersRef.current[bus.id].setLatLng([bus.location.lat, bus.location.lng]);
+                        markersRef.current[bus.id].setIcon(svgIcon);
+                        const popup = markersRef.current[bus.id].getPopup();
+                        if (popup && popup.isOpen()) {
+                            markersRef.current[bus.id].setPopupContent(getPopupHtml(bus));
+                        }
+                    } else {
+                        const marker = L.marker([bus.location.lat, bus.location.lng], { icon: svgIcon })
+                            .addTo(mapInstanceRef.current)
+                            .bindPopup(getPopupHtml(bus));
+                        
+                        marker.on('mouseover', function (e) { this.openPopup(); });
+                        marker.on('mouseout', function (e) { this.closePopup(); });
+                        
+                        markersRef.current[bus.id] = marker;
+                    }
+                });
+                
+                if (buses.length === 1) {
+                    mapInstanceRef.current.panTo([buses[0].location.lat, buses[0].location.lng]);
+                }
+            }, [buses]);
+
+            return <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden relative" style={{ height }}><div ref={mapRef} style={{ width: '100%', height: '100%', zIndex: 1 }} id="leaflet-map" /></div>;
+        };
+
+        // ─────────────────────────────────────────────────────────────────────
+         // FLEET TABLE (unchanged)
+        // ─────────────────────────────────────────────────────────────────────
+        const FleetTable = ({ buses, onBusClick }) => (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead>
+                            <tr className="bg-slate-50 border-b border-slate-100">
+                                <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Registration No.</th>
+                                <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Route</th>
+                                <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                                <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">SOC</th>
+                                <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Temp</th>
+                                <th className="p-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Speed</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {buses.length > 0 ? buses.map(bus => (
+                                <tr key={bus.id} onClick={() => onBusClick(bus)} className="hover:bg-slate-50 transition-colors cursor-pointer group">
+                                    <td className="p-4 font-medium text-slate-900 group-hover:text-blue-600 underline decoration-transparent group-hover:decoration-blue-300 underline-offset-2 transition-all">{bus.id}</td>
+                                    <td className="p-4 text-slate-600"><span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: ROUTES.find(r => r.id === bus.routeId)?.color }}></span>{ROUTES.find(r => r.id === bus.routeId)?.name}</span></td>
+                                    <td className="p-4"><span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${bus.status === 'Moving' ? 'bg-blue-100 text-blue-800' : bus.status === 'Charging' ? 'bg-green-100 text-green-800' : bus.status === 'Alert' ? 'bg-red-100 text-red-800' : 'bg-slate-100 text-slate-800'}`}>{bus.status}</span></td>
+                                    <td className="p-4"><div className="flex items-center gap-2"><div className="w-16 h-2 bg-slate-200 rounded-full overflow-hidden"><div className={`h-full rounded-full ${bus.soc < 20 ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${bus.soc}%` }} /></div><span className="text-sm font-medium text-slate-700">{Math.round(bus.soc)}%</span></div></td>
+                                    <td className="p-4 text-slate-600 text-sm">{Math.round(bus.temp)}°C</td>
+                                    <td className="p-4 text-slate-600 text-sm">{Math.round(bus.speed)} km/h</td>
+                                </tr>
+                            )) : (
+                                <tr><td colSpan="6" className="p-8 text-center text-slate-500">No buses match filter.</td></tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+
+        // ─────────────────────────────────────────────────────────────────────
+        // CHARGING VIEW (unchanged)
+        // ─────────────────────────────────────────────────────────────────────
+        const ChargingView = ({ chargers }) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {chargers.map(charger => (
+                    <div key={charger.id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                        <div className="flex justify-between items-start mb-4">
+                            <div><h4 className="font-bold text-slate-900">{charger.name}</h4><p className="text-xs text-slate-500">{charger.location}</p></div>
+                            <div className={`p-2 rounded-lg ${charger.isOccupied ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'}`}><Zap size={20} /></div>
+                        </div>
+                        <div className="space-y-4">
+                            <div className="flex justify-between items-center text-sm"><span className="text-slate-500">Status</span><span className={`font-medium ${charger.isOccupied ? 'text-blue-600' : 'text-green-600'}`}>{charger.isOccupied ? 'Occupied' : 'Available'}</span></div>
+                            {charger.isOccupied && (<>
+                                <div className="flex justify-between items-center text-sm"><span className="text-slate-500">Vehicle</span><span className="font-medium text-slate-900">{charger.currentVehicle}</span></div>
+                                <div className="flex justify-between items-center text-sm"><span className="text-slate-500">Power Output</span><span className="font-medium text-slate-900">{charger.power} kW</span></div>
+                            </>)}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        );
+
+        // ─────────────────────────────────────────────────────────────────────
+        // BUS DETAIL MODAL (unchanged)
+        // ─────────────────────────────────────────────────────────────────────
+        const BusDetailModal = ({ bus, route, alerts, onClose }) => {
+            if (!bus) return null;
+            const busAlerts = alerts.filter(a => a.busId === bus.id);
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">
+                    <div className="bg-white rounded-3xl w-full max-w-5xl h-[85vh] overflow-hidden shadow-2xl flex flex-col relative">
+                        <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-white z-10">
+                            <div className="flex items-center gap-4">
+                                <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200"><Bus size={32} className="text-white" /></div>
+                                <div><h2 className="text-2xl font-bold text-slate-900">{bus.id}</h2><p className="text-slate-500 flex items-center gap-1 text-sm">{route?.name || 'Unknown Route'} <span className="w-1 h-1 rounded-full bg-slate-300 mx-1"></span><span className={`font-semibold ${bus.status === 'Alert' ? 'text-red-500' : 'text-green-600'}`}>{bus.status}</span></p></div>
+                            </div>
+                            <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={24} className="text-slate-500" /></button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto bg-slate-50 p-6">
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+                                <div className="space-y-6 lg:col-span-1">
+                                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                                        <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><User size={18} /> Vehicle Profile</h4>
+                                        <div className="space-y-4">
+                                            <div className="flex justify-between items-center py-2 border-b border-slate-50"><span className="text-slate-500 text-sm">Driver</span><span className="font-medium text-slate-900">{bus.driverName}</span></div>
+                                            <div className="flex justify-between items-center py-2 border-b border-slate-50"><span className="text-slate-500 text-sm">Total Dist.</span><span className="font-medium text-slate-900">{(bus.distanceTraveled || 0).toLocaleString()} km</span></div>
+                                            <div className="flex justify-between items-center py-2 border-b border-slate-50"><span className="text-slate-500 text-sm">Battery Health</span><span className="font-medium text-green-600">{bus.soh}% (Good)</span></div>
+                                            <div className="flex justify-between items-center py-2"><span className="text-slate-500 text-sm">Last Maint.</span><span className="font-medium text-slate-900">{bus.lastMaintenance}</span></div>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center"><Gauge size={28} className="text-blue-500 mb-2" /><span className="text-2xl font-bold text-slate-900">{Math.round(bus.speed)}</span><span className="text-xs text-slate-400 uppercase font-bold">km/h</span></div>
+                                        <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center"><BatteryCharging size={28} className={`${bus.soc < 20 ? 'text-red-500' : 'text-green-500'} mb-2`} /><span className="text-2xl font-bold text-slate-900">{Math.round(bus.soc)}%</span><span className="text-xs text-slate-400 uppercase font-bold">SOC</span></div>
+                                        <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center col-span-2"><div className="flex items-center gap-2 mb-1"><Thermometer size={20} className="text-orange-500" /><span className="text-slate-500 text-sm">Battery Temp</span></div><div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mb-2"><div className="h-full bg-orange-400 transition-all duration-500" style={{ width: `${(bus.temp / 60) * 100}%` }} /></div><span className="text-lg font-bold text-slate-900">{Math.round(bus.temp)}°C</span></div>
+                                    </div>
+                                </div>
+                                <div className="lg:col-span-2 space-y-6 flex flex-col">
+                                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden h-[300px] relative">
+                                        <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur px-3 py-1 rounded-lg text-xs font-bold text-slate-600 shadow-sm pointer-events-none">Live Location</div>
+                                        <GoogleMapComponent buses={[bus]} routes={route ? [route] : []} height="100%" />
+                                    </div>
+                                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex-1 flex flex-col overflow-hidden min-h-[200px]">
+                                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                            <h4 className="font-bold text-slate-800 flex items-center gap-2"><History size={18} /> Recent Activity Log</h4>
+                                            <span className="text-xs bg-slate-200 text-slate-600 px-2 py-1 rounded-full">{busAlerts.length} Events</span>
+                                        </div>
+                                        <div className="overflow-y-auto p-0">
+                                            {busAlerts.length === 0 ? (
+                                                <div className="flex flex-col items-center justify-center h-40 text-slate-400"><CheckCircle size={32} className="mb-2 opacity-20" /><p className="text-sm">No recent alerts logged.</p></div>
+                                            ) : (
+                                                <div className="divide-y divide-slate-50">
+                                                    {busAlerts.map(alert => (
+                                                        <div key={alert.id} className="p-4 flex gap-4 hover:bg-slate-50 transition-colors">
+                                                            <div className={`mt-1 ${alert.type === 'speed' ? 'text-red-500' : alert.type === 'soc' ? 'text-orange-500' : 'text-blue-500'}`}>
+                                                                {alert.type === 'speed' ? <Gauge size={20} /> : alert.type === 'soc' ? <Battery size={20} /> : <AlertTriangle size={20} />}
+                                                            </div>
+                                                            <div><p className="text-sm font-medium text-slate-900">{alert.message}</p><p className="text-xs text-slate-400 mt-1">{alert.time}</p></div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ─────────────────────────────────────────────────────────────────────
+        // MAIN APP
+        // ─────────────────────────────────────────────────────────────────────
+        const App = () => {
+            // Auth
+            const [currentUser, setCurrentUser] = useState(null);
+            const [authChecked, setAuthChecked] = useState(false);
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [loginError, setLoginError] = useState('');
+            const [isSigningIn, setIsSigningIn] = useState(false);
+
+            // Fleet UI
+            const [activeTab, setActiveTab] = useState('dashboard');
+            const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+            const [fleetFilter, setFleetFilter] = useState('All');
+            const [searchQuery, setSearchQuery] = useState('');
+            const [detailedRoutes, setDetailedRoutes] = useState({});
+            const [selectedBusForDetail, setSelectedBusForDetail] = useState(null);
+
+            // Data (from Firestore)
+            const [buses, setBuses] = useState([]);
+            const [chargers, setChargers] = useState([]);
+            const [alerts, setAlerts] = useState([]);
+
+            // Tracks alert keys already written to Firestore (avoids duplicates)
+            const firedAlertsRef = useRef(new Set());
+            const chargersRef = useRef([]);
+            useEffect(() => { chargersRef.current = chargers; }, [chargers]);
+
+            // ── Auth state listener ──────────────────────────────────────────
+            useEffect(() => {
+                const unsub = auth.onAuthStateChanged(user => {
+                    setCurrentUser(user);
+                    setAuthChecked(true);
+                });
+                return unsub;
+            }, []);
+
+            // ── Firestore data listeners (when signed in) ────────────────────
+            useEffect(() => {
+                if (!currentUser) { setBuses([]); setChargers([]); setAlerts([]); return; }
+
+                // Chargers: real-time sync
+                const unsubChargers = db.collection('chargers').onSnapshot(snap => {
+                    if (!snap.empty) {
+                        setChargers(snap.docs.map(d => d.data()).sort((a, b) => a.id.localeCompare(b.id)));
+                    } else {
+                        // Seed chargers on first web-only run
+                        setChargers(INIT_CHARGERS);
+                        const batch = db.batch();
+                        INIT_CHARGERS.forEach(c => batch.set(db.collection('chargers').doc(c.id), c));
+                        batch.commit();
+                    }
+                });
+
+                // Alerts: real-time sync (ordered newest first)
+                const unsubAlerts = db.collection('alerts')
+                    .orderBy('timestamp', 'desc')
+                    .limit(100)
+                    .onSnapshot(snap => {
+                        setAlerts(snap.docs.map(d => {
+                            const data = d.data();
+                            return {
+                                ...data,
+                                time: data.timestamp?.toDate ? data.timestamp.toDate().toLocaleTimeString() : 'Now'
+                            };
+                        }));
+                    });
+
+                // Buses: initial load from Firestore, then simulation takes over
+                db.collection('buses').get().then(snap => {
+                    if (!snap.empty) {
+                        const loaded = snap.docs.map(d => {
+                            const data = d.data();
+                            // Normalise: iOS stores lat/lng as flat fields; web uses location:{lat,lng}
+                            return {
+                                ...data,
+                                location: { lat: data.latitude ?? data.location?.lat, lng: data.longitude ?? data.location?.lng }
+                            };
+                        }).sort((a, b) => a.id.localeCompare(b.id));
+                        setBuses(loaded);
+                    } else {
+                        // Seed buses on first web-only run
+                        const initBuses = Array.from({ length: BUS_COUNT }).map((_, i) => {
+                            const route = ROUTES[i % ROUTES.length];
+                            const isCharging = (i === 2 || i === 4);
+                            const loc = route.points[0];
+                            return {
+                                id: `DL-1PC-${2000 + i}`,
+                                name: `Bus ${2000 + i}`,
+                                routeId: route.id,
+                                location: loc,
+                                latitude: loc.lat, longitude: loc.lng,
+                                targetIndex: 1 + (i % Math.max(1, route.points.length - 1)),
+                                pathIndex: i * 150,
+                                heading: 0,
+                                status: isCharging ? 'Charging' : 'Moving',
+                                soc: isCharging ? 25 : 50 + Math.random() * 40,
+                                temp: 32 + Math.random() * 8,
+                                speed: isCharging ? 0 : 20 + Math.random() * 30,
+                                distanceTraveled: Math.floor(Math.random() * 50000) + 10000,
+                                driverName: DRIVER_NAMES[i % DRIVER_NAMES.length],
+                                soh: Math.floor(Math.random() * 11) + 90,
+                                lastMaintenance: `2024-${10 + (i % 2)}-${String(10 + i).padStart(2, '0')}`,
+                            };
+                        });
+                        setBuses(initBuses);
+                        const batch = db.batch();
+                        initBuses.forEach(b => batch.set(db.collection('buses').doc(b.id), b));
+                        batch.commit();
+                    }
+                });
+
+                return () => { unsubChargers(); unsubAlerts(); };
+            }, [currentUser]);
+
+            // ── Simulation timer (local + writes to Firestore every 2 s) ────
+            useEffect(() => {
+                if (!currentUser || buses.length === 0) return;
+
+                const interval = setInterval(() => {
+                    setBuses(prevBuses => {
+                        let chargingCount = prevBuses.filter(b => ['Charging', 'Idle'].includes(b.status) || b.soc <= 0).length;
+                        if (chargingCount < 2) {
+                            const movingBuses = prevBuses.filter(b => b.status === 'Moving' && b.soc > 0).sort((a, b) => a.soc - b.soc);
+                            for (let i = 0; i < Math.min(2 - chargingCount, movingBuses.length); i++) {
+                                movingBuses[i].soc = 0; // Force to charge
+                            }
+                        }
+
+                        let localChargers = JSON.parse(JSON.stringify(chargersRef.current));
+                        const chargersToUpdate = {};
+                        
+                        // FIX: Clean up stale chargers (if a bus was scattered/moved but left a ghost on the charger)
+                        localChargers.forEach(c => {
+                            if (c.currentVehicle) {
+                                const occupant = prevBuses.find(b => b.id === c.currentVehicle);
+                                if (!occupant || (occupant.status === 'Moving' && occupant.soc > 0)) {
+                                    c.isOccupied = false;
+                                    c.currentVehicle = null;
+                                    chargersToUpdate[c.id] = c;
+                                }
+                            }
+                        });
+                        
+                        const updatedBuses = prevBuses.map(bus => {
+                            const detailedPath = detailedRoutes[bus.routeId];
+                            const basicRoute = ROUTES.find(r => r.id === bus.routeId);
+
+                            if (bus.status !== 'Moving') {
+                                if (bus.status === 'Charging') {
+                                    const newSoc = Math.min(100, bus.soc + 0.5);
+                                    if (newSoc >= 95) {
+                                        const cIdx = localChargers.findIndex(c => c.currentVehicle === bus.id);
+                                        if (cIdx !== -1) {
+                                            localChargers[cIdx].isOccupied = false;
+                                            localChargers[cIdx].currentVehicle = null;
+                                            chargersToUpdate[localChargers[cIdx].id] = localChargers[cIdx];
+                                        }
+                                        let bPath = detailedPath?.length > 0 ? detailedPath : basicRoute.points;
+                                        let idx = detailedPath?.length > 0 ? bus.pathIndex : bus.targetIndex;
+                                        idx = idx % bPath.length;
+                                        return { ...bus, soc: newSoc, status: 'Moving', speed: 0, location: bPath[idx], latitude: bPath[idx].lat, longitude: bPath[idx].lng };
+                                    }
+                                    return { ...bus, soc: newSoc, speed: 0 };
+                                } else if (bus.status === 'Idle' && bus.soc <= 0) {
+                                    let freeCIdx = localChargers.findIndex(c => c.currentVehicle === bus.id); if (freeCIdx === -1) freeCIdx = localChargers.findIndex(c => !c.isOccupied);
+                                    if (freeCIdx !== -1) {
+                                        localChargers[freeCIdx].isOccupied = true;
+                                        localChargers[freeCIdx].currentVehicle = bus.id;
+                                        chargersToUpdate[localChargers[freeCIdx].id] = localChargers[freeCIdx];
+                                        const loc = CHARGER_LOCATIONS[localChargers[freeCIdx].id];
+                                        return { ...bus, status: 'Charging', speed: 0, location: loc, latitude: loc.lat, longitude: loc.lng };
+                                    }
+                                }
+                                return { ...bus, speed: 0 };
+                            }
+
+                            let newLocation = { ...bus.location };
+                            let nextPathIndex = bus.pathIndex;
+                            let nextTargetIndex = bus.targetIndex;
+
+                            if (detailedPath && detailedPath.length > 0) {
+                                nextPathIndex = (bus.pathIndex + 1) % detailedPath.length;
+                                newLocation = detailedPath[nextPathIndex];
+                            } else if (basicRoute) {
+                                const target = basicRoute.points[bus.targetIndex % basicRoute.points.length];
+                                const dLat = target.lat - bus.location.lat;
+                                const dLng = target.lng - bus.location.lng;
+                                const dist = Math.sqrt(dLat * dLat + dLng * dLng);
+                                if (dist < 0.001) {
+                                    nextTargetIndex = (bus.targetIndex + 1) % basicRoute.points.length;
+                                } else {
+                                    newLocation = { lat: bus.location.lat + dLat * 0.05, lng: bus.location.lng + dLng * 0.05 };
+                                }
+                            }
+
+                            const overSpeed = Math.random() > 0.95;
+                            let newSpeed = overSpeed ? 65 + Math.random() * 20 : 30 + Math.random() * 20;
+                            const newTemp = 35 + (newSpeed / 10) + Math.random();
+                            let newSoc = Math.max(0, bus.soc - 0.05);
+                            let newStatus = 'Moving';
+                            
+                            if (newSoc <= 0) {
+                                newSpeed = 0;
+                                let freeCIdx = localChargers.findIndex(c => c.currentVehicle === bus.id); if (freeCIdx === -1) freeCIdx = localChargers.findIndex(c => !c.isOccupied);
+                                if (freeCIdx !== -1) {
+                                    newStatus = 'Charging';
+                                    localChargers[freeCIdx].isOccupied = true;
+                                    localChargers[freeCIdx].currentVehicle = bus.id;
+                                    chargersToUpdate[localChargers[freeCIdx].id] = localChargers[freeCIdx];
+                                    newLocation = CHARGER_LOCATIONS[localChargers[freeCIdx].id];
+                                } else {
+                                    newStatus = 'Idle';
+                                }
+                            }
+
+                            const tempKey = `${bus.id}_temp`;
+                            const speedKey = `${bus.id}_speed`;
+                            const socKey = `${bus.id}_soc`;
+
+                            if (newTemp > 45 && !firedAlertsRef.current.has(tempKey)) {
+                                firedAlertsRef.current.add(tempKey);
+                                const id = generateId();
+                                db.collection('alerts').doc(id).set({
+                                    id, busId: bus.id, type: 'temp',
+                                    message: `High Battery Temp: ${Math.round(newTemp)}°C on ${bus.id}`,
+                                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                                    resolved: false
+                                });
+                            }
+                            if (newSpeed > 60 && !firedAlertsRef.current.has(speedKey)) {
+                                firedAlertsRef.current.add(speedKey);
+                                const id = generateId();
+                                db.collection('alerts').doc(id).set({
+                                    id, busId: bus.id, type: 'speed',
+                                    message: `Overspeed: ${Math.round(newSpeed)} km/h on ${bus.id}`,
+                                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                                    resolved: false
+                                });
+                            }
+                            if (newSoc < 15 && !firedAlertsRef.current.has(socKey)) {
+                                firedAlertsRef.current.add(socKey);
+                                const id = generateId();
+                                db.collection('alerts').doc(id).set({
+                                    id, busId: bus.id, type: 'soc',
+                                    message: `Low Battery: ${Math.round(newSoc)}% on ${bus.id}`,
+                                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                                    resolved: false
+                                });
+                            }
+
+                            return {
+                                ...bus,
+                                location: newLocation,
+                                latitude: newLocation.lat,
+                                longitude: newLocation.lng,
+                                pathIndex: nextPathIndex,
+                                targetIndex: nextTargetIndex,
+                                speed: newSpeed, soc: newSoc, temp: newTemp,
+                                status: newStatus
+                            };
+                        });
+
+                        const batch = db.batch();
+                        updatedBuses.forEach(bus => {
+                            batch.set(db.collection('buses').doc(bus.id), bus);
+                        });
+                        Object.values(chargersToUpdate).forEach(c => {
+                            batch.set(db.collection('chargers').doc(c.id), c);
+                        });
+                        batch.commit();
+
+                        return updatedBuses;
+                    });
+                }, REFRESH_RATE);
+
+                return () => clearInterval(interval);
+            }, [currentUser, buses.length, detailedRoutes]);
+
+            // ── Handlers ─────────────────────────────────────────────────────
+            const handleLogin = () => {
+                setIsSigningIn(true); setLoginError('');
+                auth.signInWithEmailAndPassword(email, password).catch(() => {
+                    setLoginError('Incorrect email or password.'); setIsSigningIn(false);
+                });
+            };
+
+            const handleLogout = () => {
+                auth.signOut();
+                setBuses([]); setChargers([]); setAlerts([]);
+            };
+
+            const handleRouteCalculated = (routeId, path) => setDetailedRoutes(prev => ({ ...prev, [routeId]: path }));
+
+            // ── Computed ─────────────────────────────────────────────────────
+            const totalBuses = buses.length;
+            const activeBuses = buses.filter(b => b.status === 'Moving').length;
+            const avgSoc = Math.round(buses.reduce((a, b) => a + b.soc, 0) / totalBuses) || 0;
+            const criticalAlerts = alerts.length;
+
+            const filteredBuses = buses.filter(bus => {
+                const matchesFilter = fleetFilter === 'All' || bus.status === fleetFilter;
+                const matchesSearch = bus.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    (bus.name || '').toLowerCase().includes(searchQuery.toLowerCase());
+                return matchesFilter && matchesSearch;
+            });
+
+            const getSelectedBusData = () => {
+                if (!selectedBusForDetail) return null;
+                return buses.find(b => b.id === selectedBusForDetail.id) || selectedBusForDetail;
+            };
+
+            // ── Render ───────────────────────────────────────────────────────
+
+            // Splash screen while Firebase checks persisted session
+            if (!authChecked) return (
+                <div className="flex h-screen items-center justify-center bg-slate-900">
+                    <div className="text-center">
+                        <div className="w-16 h-16 bg-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                            <Bus size={36} className="text-white" />
+                        </div>
+                        <p className="text-white font-bold text-xl">EV Saathi</p>
+                        <p className="text-slate-400 mt-2 text-sm">Initializing…</p>
+                    </div>
+                </div>
+            );
+
+            // Login screen
+            if (!currentUser) return (
+                <LoginView email={email} setEmail={setEmail}
+                    password={password} setPassword={setPassword}
+                    onLogin={handleLogin} isLoading={isSigningIn} error={loginError} />
+            );
+
+            // Main dashboard
+            return (
+                <div className="flex h-screen bg-slate-50 font-sans text-slate-900">
+                    <Sidebar activeTab={activeTab} setActiveTab={setActiveTab}
+                        isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen}
+                        onLogout={handleLogout} userName={currentUser.email} />
+
+                    <div className="flex-1 flex flex-col overflow-hidden relative">
+                        <header className="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-6 z-10 shrink-0">
+                            <div className="flex items-center gap-4">
+                                <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg"><Menu size={20} /></button>
+                                <h2 className="font-bold text-xl text-slate-800 hidden md:block">
+                                    {activeTab === 'dashboard' && 'Operations Overview'}
+                                    {activeTab === 'map' && 'Live Tracking'}
+                                    {activeTab === 'fleet' && 'Fleet Management'}
+                                    {activeTab === 'charging' && 'Charging Infrastructure'}
+                                    {activeTab === 'alerts' && 'System Alerts'}
+                                </h2>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <div className="relative hidden md:block">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                    <input type="text" placeholder="Search bus no…" value={searchQuery}
+                                        onChange={e => setSearchQuery(e.target.value)}
+                                        className="pl-10 pr-4 py-2 bg-slate-100 border-none rounded-full text-sm focus:ring-2 focus:ring-orange-500 outline-none w-64" />
+                                </div>
+                                <div className="relative">
+                                    <button className="p-2 text-slate-500 hover:bg-slate-100 rounded-full"><AlertTriangle size={20} /></button>
+                                    {alerts.length > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>}
+                                </div>
+                                {/* Live indicator */}
+                                <div className="hidden md:flex items-center gap-1.5 text-xs text-green-600 font-medium">
+                                    <button 
+                                        onClick={() => {
+                                            if(!window.confirm("Randomize fleet positions and batteries?")) return;
+                                            const batch = db.batch();
+                                            const scatteredBuses = buses.map((bus, i) => {
+                                                const dPath = detailedRoutes[bus.routeId];
+                                                const bRoute = ROUTES.find(r => r.id === bus.routeId);
+                                                let pIdx = bus.pathIndex, lat = bus.location.lat, lng = bus.location.lng;
+                                                
+                                                if (dPath && dPath.length > 0) {
+                                                    pIdx = Math.floor(Math.random() * dPath.length);
+                                                    lat = dPath[pIdx].lat; lng = dPath[pIdx].lng;
+                                                } else if (bRoute) {
+                                                    pIdx = Math.floor(Math.random() * bRoute.points.length);
+                                                    lat = bRoute.points[pIdx].lat; lng = bRoute.points[pIdx].lng;
+                                                }
+                                                const newSoc = Math.floor(Math.random() * 90) + 5;
+                                                
+                                                batch.update(db.collection('buses').doc(bus.id), {
+                                                    soc: newSoc,
+                                                    pathIndex: pIdx,
+                                                    targetIndex: pIdx,
+                                                    latitude: lat,
+                                                    longitude: lng,
+                                                    status: 'Moving',
+                                                    speed: 40 + Math.random() * 20
+                                                });
+                                                
+                                                return {
+                                                    ...bus,
+                                                    soc: newSoc,
+                                                    pathIndex: pIdx,
+                                                    targetIndex: pIdx,
+                                                    location: { lat, lng },
+                                                    status: 'Moving',
+                                                    speed: 40 + Math.random() * 20
+                                                };
+                                            });
+                                            
+                                            chargers.forEach(c => {
+                                                batch.update(db.collection('chargers').doc(c.id), { isOccupied: false, currentVehicle: null });
+                                            });
+                                            
+                                            batch.commit().then(() => {
+                                                setBuses(scatteredBuses);
+                                            });
+                                        }}
+                                        className="mr-2 text-xs font-semibold bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-full hover:bg-indigo-200 transition-colors"
+                                    >
+                                        Scatter Fleet
+                                    </button>
+                                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                                    Live · Firebase
+                                </div>
+                            </div>
+                        </header>
+
+                        <main className="flex-1 overflow-y-auto p-6">
+                            {/* DASHBOARD */}
+                            {activeTab === 'dashboard' && (
+                                <div className="space-y-6 fade-in">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                        <MetricCard title="Total Fleet" value={totalBuses} subtext="100% Operational" icon={Bus} color="bg-orange-500" />
+                                        <MetricCard title="Active Buses" value={activeBuses} subtext={`${totalBuses - activeBuses} Idle/Charging`} icon={Activity} color="bg-green-500" />
+                                        <MetricCard title="Avg Fleet SOC" value={`${avgSoc}%`} subtext={avgSoc < 50 ? "Requires Attention" : "Healthy"} icon={BatteryCharging} color={avgSoc < 50 ? "bg-amber-500" : "bg-emerald-500"} />
+                                        <MetricCard title="System Alerts" value={criticalAlerts} subtext="Last 24 Hours" icon={AlertTriangle} color="bg-red-500" />
+                                    </div>
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                        <div className="lg:col-span-2">
+                                            <GoogleMapComponent buses={buses} routes={ROUTES} height="500px" onRouteCalculated={handleRouteCalculated} />
+                                        </div>
+                                        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col h-[500px]">
+                                            <h3 className="font-bold text-lg mb-4">Recent Alerts</h3>
+                                            <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+                                                {alerts.length === 0
+                                                    ? <p className="text-slate-400 text-center py-10">No active alerts</p>
+                                                    : alerts.map(alert => (
+                                                        <div key={alert.id} className="flex gap-3 p-3 bg-red-50 rounded-xl border border-red-100">
+                                                            {alert.type === 'speed' ? <Gauge size={20} className="text-red-500 shrink-0 mt-1" /> : <AlertTriangle size={20} className="text-red-500 shrink-0 mt-1" />}
+                                                            <div>
+                                                                <p className="font-medium text-slate-900 text-sm">{alert.busId}</p>
+                                                                <p className="text-xs text-red-600 font-medium">{alert.message}</p>
+                                                                <p className="text-xs text-slate-400 mt-1">{alert.time}</p>
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* LIVE MAP */}
+                            {activeTab === 'map' && (
+                                <div className="h-full flex flex-col fade-in">
+                                    <GoogleMapComponent buses={buses} routes={ROUTES} height="calc(100vh - 9rem)" onRouteCalculated={handleRouteCalculated} />
+                                </div>
+                            )}
+
+                            {/* FLEET STATUS */}
+                            {activeTab === 'fleet' && (
+                                <div className="space-y-4 fade-in">
+                                    <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                                        <div className="flex gap-2">
+                                            {['All', 'Moving', 'Charging', 'Alert'].map(status => (
+                                                <button key={status} onClick={() => setFleetFilter(status)}
+                                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${fleetFilter === status ? 'bg-orange-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                                                    {status}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <p className="text-sm text-slate-500">{filteredBuses.length} buses</p>
+                                    </div>
+                                    <FleetTable buses={filteredBuses} onBusClick={setSelectedBusForDetail} />
+                                </div>
+                            )}
+
+                            {/* CHARGING */}
+                            {activeTab === 'charging' && <div className="fade-in"><ChargingView chargers={chargers} /></div>}
+
+                            {/* ALERTS */}
+                            {activeTab === 'alerts' && (
+                                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 fade-in">
+                                    <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                                        <h3 className="font-bold text-lg">All Alerts</h3>
+                                        <span className="text-sm font-medium text-red-600 bg-red-50 px-3 py-1 rounded-full">{alerts.length} total</span>
+                                    </div>
+                                    <div className="divide-y divide-slate-50">
+                                        {alerts.length === 0
+                                            ? <p className="text-slate-400 text-center p-12">No alerts logged.</p>
+                                            : alerts.map(alert => (
+                                                <div key={alert.id} className="p-4 flex gap-4 hover:bg-slate-50 transition-colors">
+                                                    <div className={`mt-1 ${alert.type === 'speed' ? 'text-red-500' : alert.type === 'soc' ? 'text-amber-500' : 'text-blue-500'}`}>
+                                                        {alert.type === 'speed' ? <Gauge size={20} /> : alert.type === 'soc' ? <Battery size={20} /> : <AlertTriangle size={20} />}
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <p className="text-sm font-medium text-slate-900">{alert.busId}</p>
+                                                        <p className="text-xs font-medium text-red-600">{alert.message}</p>
+                                                        <p className="text-xs text-slate-400 mt-1">{alert.time}</p>
+                                                    </div>
+                                                    {alert.resolved && <span className="text-xs text-green-600 font-medium self-center">Resolved</span>}
+                                                </div>
+                                            ))
+                                        }
+                                    </div>
+                                </div>
+                            )}
+                        </main>
+                    </div>
+
+                    {selectedBusForDetail && (
+                        <BusDetailModal
+                            bus={getSelectedBusData()}
+                            route={ROUTES.find(r => r.id === selectedBusForDetail.routeId)}
+                            alerts={alerts}
+                            onClose={() => setSelectedBusForDetail(null)}
+                        />
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>

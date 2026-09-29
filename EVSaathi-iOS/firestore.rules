@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: check if the caller is an authenticated admin
+    function isAdmin() {
+      return request.auth != null;
+    }
+
+    // Helper: check if the caller is a superadmin
+    function isSuperAdmin() {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin';
+    }
+
+    // ── Buses ──────────────────────────────────────────────────────────────
+    // All authenticated admins can read and write bus telemetry
+    match /buses/{busId} {
+      allow read:  if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ── Chargers ───────────────────────────────────────────────────────────
+    match /chargers/{chargerId} {
+      allow read:  if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ── Alerts ────────────────────────────────────────────────────────────
+    match /alerts/{alertId} {
+      allow read:  if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ── Users (admin profiles) ────────────────────────────────────────────
+    // Any admin can read user profiles (for display)
+    // Only superadmin can create/delete other user profiles
+    // Users can update their own profile
+    match /users/{userId} {
+      allow read:   if isAdmin();
+      allow create: if isSuperAdmin();
+      allow update: if request.auth.uid == userId || isSuperAdmin();
+      allow delete: if isSuperAdmin();
+    }
+  }
+}
